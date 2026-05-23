@@ -571,7 +571,7 @@ def create_student_card(card_path, name_eng, name_th, date, month, level, progra
     font1 = ImageFont.truetype("Mitr-Regular.ttf", 90)
     font2 = ImageFont.truetype("Mitr-Regular.ttf", 60)
 
-    draw.text((1000, 500), f"{name_eng}", font=font2, anchor="ra", fill="black")
+    draw_compressed_text(card, name_eng, (1000, 500), 400, "Mitr-Regular.ttf", 60)
     draw_compressed_text(card, name_th, (1000, 400), 400, "Mitr-Regular.ttf", 90)
     draw.text((1000, 707), f"{'วันที่ '+date+' เดือน '+month}", font=font1, anchor="ra", fill="black")
     draw.text((1000, 580), f"{'ปี '+level}", font=font1, anchor="ra", fill="black")
