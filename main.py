@@ -485,6 +485,62 @@ async def on_message(message):
 # =========================
 # CARD GENERATOR
 # =========================
+def draw_compressed_text(
+    base_image,
+    text,
+    position,
+    left_limit,
+    font_path,
+    font_size,
+    fill="black"
+):
+
+    font = ImageFont.truetype(font_path, font_size)
+
+    x, y = position
+
+    temp = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
+
+    temp_draw = ImageDraw.Draw(temp)
+
+    temp_draw.text(
+        (x, y),
+        text,
+        font=font,
+        fill=fill,
+        anchor="ra"
+    )
+
+    bbox = temp.getbbox()
+
+    if not bbox:
+        return
+
+    text_region = temp.crop(bbox)
+
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+
+    max_width = x - left_limit
+
+    if text_width > max_width:
+
+        text_region = text_region.resize(
+            (max_width, text_height),
+            Image.Resampling.LANCZOS
+        )
+
+        text_width = max_width
+
+    paste_x = x - text_width
+    paste_y = bbox[1]
+
+    base_image.paste(
+        text_region,
+        (paste_x, paste_y),
+        text_region
+    )
+
 def create_student_card(card_path, name_eng, name_th, date, month, level, program, profile_image_url):
     """สร้างบัตรนักเรียน พร้อมพื้นหลัง"""
 
@@ -516,7 +572,7 @@ def create_student_card(card_path, name_eng, name_th, date, month, level, progra
     font2 = ImageFont.truetype("Mitr-Regular.ttf", 60)
 
     draw.text((1000, 500), f"{name_eng}", font=font2, anchor="ra", fill="black")
-    draw.text((1000, 400), f"{name_th}", font=font1, anchor="ra", fill="black")
+    draw_compressed_text(card, name_th, (1000, 400), 400, "Mitr-Regular.ttf", 90)
     draw.text((1000, 707), f"{'วันที่ '+date+' เดือน '+month}", font=font1, anchor="ra", fill="black")
     draw.text((1000, 580), f"{'ปี '+level}", font=font1, anchor="ra", fill="black")
     draw.text((1000, 834), f"{program}", font=font1, anchor="ra", fill="black")
