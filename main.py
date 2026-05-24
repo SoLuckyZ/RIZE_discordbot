@@ -10,6 +10,7 @@ import requests
 from io import BytesIO
 import firebase_admin
 from firebase_admin import credentials, firestore
+from supabase import create_client
 from myserver import server_on
 
 # =========================
@@ -19,6 +20,15 @@ cred = credentials.Certificate('/etc/secrets/serviceAccountKey.json')
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
+# =========================
+# SUPABASE
+# =========================
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+BUCKET_NAME = "studentcard"
 
 # =========================
 # BOT
@@ -316,7 +326,25 @@ class EditCardView(discord.ui.View):
         try:
             msg = await interaction.client.wait_for("message", check=check, timeout=120)
 
-            image_url = msg.attachments[0].url
+            doc = db.collection("student_cards").document(self.user_id)\
+                .collection("cards").document(self.card_id).get()
+
+            data = doc.to_dict()
+
+            old_url = data.get("profile_image_url")
+
+            if old_url:
+                try:
+                    old_file = old_url.split(f"/{BUCKET_NAME}/")[1]
+                    supabase.storage.from_(BUCKET_NAME).remove([old_file])
+                except:
+                    pass
+
+            image_url = upload_image_to_supabase(
+                msg.attachments[0].url,
+                self.user_id,
+                self.card_id
+            )
 
             db.collection("student_cards").document(self.user_id)\
               .collection("cards").document(self.card_id)\
@@ -387,6 +415,20 @@ class ConfirmDeleteView(discord.ui.View):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("คุณไม่สามารถกดปุ่มนี้ได้!", ephemeral=True)
             return
+
+        doc = db.collection("student_cards").document(self.user_id)\
+            .collection("cards").document(self.card_id).get()
+
+        if doc.exists:
+            data = doc.to_dict()
+            old_url = data.get("profile_image_url")
+
+            if old_url:
+                try:
+                    old_file = old_url.split(f"/{BUCKET_NAME}/")[1]
+                    supabase.storage.from_(BUCKET_NAME).remove([old_file])
+                except:
+                    pass
 
         db.collection("student_cards").document(self.user_id)\
           .collection("cards").document(self.card_id).delete()
@@ -468,18 +510,98 @@ async def on_message(message):
         return
 
     if message.attachments:
-        url = message.attachments[0].proxy_url
+
+        image_url = upload_image_to_supabase(
+            message.attachments[0].url,
+            user_id,
+            pending
+        )
 
         db.collection("student_cards").document(user_id)\
           .collection("cards").document(pending)\
           .update({
-            "profile_image_url": url
+            "profile_image_url": image_url
           })
 
         db.collection("student_cards").document(user_id)\
           .set({"pending_card_id": None}, merge=True)
 
         await message.reply("📷 รูปภาพถูกบันทึกเรียบร้อยแล้ว! ใช้คำสั่ง `/viewcard` เพื่อดูบัตรของคุณ")
+
+
+# =========================
+# IMAGE PROCESS + SUPABASE
+# =========================
+def process_profile_image(image_bytes):
+
+    img = Image.open(BytesIO(image_bytes)).convert("RGBA")
+
+    background_color = (255, 255, 204)
+    bg = Image.new("RGBA", img.size, background_color)
+
+    img = Image.alpha_composite(bg, img)
+
+    target_w, target_h = 750, 1000
+
+    target_ratio = target_w / target_h
+    img_ratio = img.width / img.height
+
+    if img_ratio > target_ratio:
+
+        scale = target_h / img.height
+        new_w = int(img.width * scale)
+
+        img = img.resize((new_w, target_h), Image.LANCZOS)
+
+        left = (new_w - target_w) // 2
+
+        img = img.crop((
+            left,
+            0,
+            left + target_w,
+            target_h
+        ))
+
+    else:
+
+        scale = target_w / img.width
+        new_h = int(img.height * scale)
+
+        img = img.resize((target_w, new_h), Image.LANCZOS)
+
+        img = img.crop((
+            0,
+            0,
+            target_w,
+            target_h
+        ))
+
+    output = BytesIO()
+    img.save(output, format="PNG")
+
+    output.seek(0)
+
+    return output
+
+
+def upload_image_to_supabase(image_url, user_id, card_id):
+
+    image_bytes = requests.get(image_url).content
+
+    processed = process_profile_image(image_bytes)
+
+    file_path = f"{user_id}/{card_id}.png"
+
+    supabase.storage.from_(BUCKET_NAME).upload(
+        file_path,
+        processed.getvalue(),
+        {
+            "content-type": "image/png",
+            "upsert": "true"
+        }
+    )
+
+    return supabase.storage.from_(BUCKET_NAME).get_public_url(file_path)
 
 
 # =========================
@@ -561,13 +683,6 @@ def create_student_card(card_path, name_eng, name_th, date, month, level, progra
 
             img = Image.new("RGBA", (750, 1000), (220, 220, 220, 255))
 
-        img = Image.open(BytesIO(response.content)).convert("RGBA")
-
-        background_color = (255, 255, 204)
-        bg = Image.new("RGBA", img.size, background_color)
-
-        img = Image.alpha_composite(bg, img)
-
     else:
 
         img = Image.new("RGBA", (750, 1000), (220, 220, 220, 255))
@@ -585,41 +700,6 @@ def create_student_card(card_path, name_eng, name_th, date, month, level, progra
     draw.text((1000, 707), f"{'วันที่ '+date+' เดือน '+month}", font=font1, anchor="ra", fill="black")
     draw.text((1000, 580), f"{'ปี '+level}", font=font1, anchor="ra", fill="black")
     draw.text((1000, 834), f"{program}", font=font1, anchor="ra", fill="black")
-
-    target_w, target_h = 750, 1000
-
-    target_ratio = target_w / target_h
-    img_ratio = img.width / img.height
-
-    if img_ratio > target_ratio:
-
-        scale = target_h / img.height
-        new_w = int(img.width * scale)
-
-        img = img.resize((new_w, target_h), Image.LANCZOS)
-
-        left = (new_w - target_w) // 2
-
-        img = img.crop((
-            left,
-            0,
-            left + target_w,
-            target_h
-        ))
-
-    else:
-
-        scale = target_w / img.width
-        new_h = int(img.height * scale)
-
-        img = img.resize((target_w, new_h), Image.LANCZOS)
-
-        img = img.crop((
-            0,
-            0,
-            target_w,
-            target_h
-        ))
 
     img = add_rounded_corners(img, radius=60)
 
@@ -723,6 +803,20 @@ class AdminDeleteCardSelect(discord.ui.Select):
             return
 
         card_id = self.values[0]
+
+        doc = db.collection("student_cards").document(self.target_user_id)\
+            .collection("cards").document(card_id).get()
+
+        if doc.exists:
+            data = doc.to_dict()
+            old_url = data.get("profile_image_url")
+
+            if old_url:
+                try:
+                    old_file = old_url.split(f"/{BUCKET_NAME}/")[1]
+                    supabase.storage.from_(BUCKET_NAME).remove([old_file])
+                except:
+                    pass
 
         db.collection("student_cards").document(self.target_user_id)\
           .collection("cards").document(card_id).delete()
