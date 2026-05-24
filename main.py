@@ -468,7 +468,7 @@ async def on_message(message):
         return
 
     if message.attachments:
-        url = message.attachments[0].url
+        url = message.attachments[0].proxy_url
 
         db.collection("student_cards").document(user_id)\
           .collection("cards").document(pending)\
@@ -549,8 +549,17 @@ def create_student_card(card_path, name_eng, name_th, date, month, level, progra
 
     if profile_image_url:
 
-        response = requests.get(profile_image_url)
-        response.raise_for_status()
+        try:
+            response = requests.get(profile_image_url, timeout=10)
+            response.raise_for_status()
+
+            img = Image.open(BytesIO(response.content)).convert("RGBA")
+
+        except Exception as e:
+
+            print("โหลดรูปไม่ได้:", e)
+
+            img = Image.new("RGBA", (750, 1000), (220, 220, 220, 255))
 
         img = Image.open(BytesIO(response.content)).convert("RGBA")
 
