@@ -835,7 +835,26 @@ async def helpcommand(interaction):
     emmbed.add_field(name='General', value='`/studentcard` - เพื่อสร้างบัตรนักเรียน\n`/viewcard [@ผู้ใช้]` - เพื่อดูบัตรนักเรียนของคุณหรือคนอื่น', inline=False)
 
     await interaction.response.send_message(embed = emmbed)
+    
+@bot.event
+async def on_message(message):
 
+    # กันบอทตอบตัวเอง
+    if message.author.bot:
+        return
+
+    # ถ้ามีการแท็กบอท
+    if bot.user in message.mentions:
+
+        # ลบข้อความแท็กออก เหลือแค่ข้อความที่ผู้ใช้พิมพ์
+        content = message.content.replace(f"<@{bot.user.id}>", "").replace(f"<@!{bot.user.id}>", "").strip()
+
+        # ถ้ามีข้อความต่อท้าย
+        if content:
+            await message.reply("โคเทย์ไม่เข้าใจคำถามครับ")
+
+    # สำคัญมาก ไม่งั้น slash command จะพัง
+    await bot.process_commands(message)
 # =========================
 # RUN BOT
 # =========================
