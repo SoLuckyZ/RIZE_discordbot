@@ -2,6 +2,7 @@ import discord
 import os
 import uuid
 import asyncio
+import random
 from discord import app_commands, ui
 from discord.ext import commands
 from discord.ui import View, Button
@@ -846,14 +847,22 @@ async def on_message(message):
     # ถ้ามีการแท็กบอท
     if bot.user in message.mentions:
 
-        # ลบข้อความแท็กออก เหลือแค่ข้อความที่ผู้ใช้พิมพ์
+        # ลบข้อความแท็กออก
         content = message.content.replace(f"<@{bot.user.id}>", "").replace(f"<@!{bot.user.id}>", "").strip()
 
         # ถ้ามีข้อความต่อท้าย
         if content:
-            await message.reply("โคเทย์ไม่เข้าใจคำถามครับ")
 
-    # สำคัญมาก ไม่งั้น slash command จะพัง
+            replies = [
+                "โคเทย์ไม่เข้าใจคำถามครับ😔",
+                "โคเทย์ไม่บอกครับ😏",
+                "โคเทย์งงครับ😵‍💫",
+                "โคเทย์ก็ไม่รู้ครับ😓"
+            ]
+
+            await message.reply(random.choice(replies))
+
+    # สำคัญสำหรับ slash command
     await bot.process_commands(message)
 # =========================
 # RUN BOT
